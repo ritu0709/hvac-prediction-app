@@ -53,10 +53,12 @@ model, scaler, feature_names = train_svr_engine(df_active)
 # ==========================================
 # 4. SIDEBAR USER SIMULATION SLIDERS (CLEANED)
 # ==========================================
+# ==========================================
+# 4. SIDEBAR USER SIMULATION SLIDERS (CLEANED & BOUNDED)
+# ==========================================
 st.sidebar.header("🔧 Live Simulation Variables")
 st.sidebar.write("Adjust the primary thermal factors to calculate live power demand:")
 
-# Explicitly create only your 3 essential sliders with native range constraints
 user_inputs = {}
 
 user_inputs['outside_temp'] = st.sidebar.slider(
@@ -64,14 +66,20 @@ user_inputs['outside_temp'] = st.sidebar.slider(
     float(df_active['outside_temp'].min()), float(df_active['outside_temp'].max()), float(df_active['outside_temp'].mean())
 )
 
+# 🟢 FIXED: Set realistic Return water boundaries (Warm)
 user_inputs['inlet_temp'] = st.sidebar.slider(
-    "Inlet Chilled Water Temp (°C)", 
-    float(df_active['inlet_temp'].min()), float(df_active['inlet_temp'].max()), float(df_active['inlet_temp'].mean())
+    "Inlet Chilled Water Temp (Return) (°C)", 
+    min_value=12.0, 
+    max_value=20.0, 
+    value=14.0
 )
 
+# 🟢 FIXED: Set realistic Supply water boundaries (Cold)
 user_inputs['outlet_temp'] = st.sidebar.slider(
-    "Outlet Chilled Water Temp (°C)", 
-    float(df_active['outlet_temp'].min()), float(df_active['outlet_temp'].max()), float(df_active['outlet_temp'].mean())
+    "Outlet Chilled Water Temp (Supply) (°C)", 
+    min_value=6.0, 
+    max_value=12.0, 
+    value=7.0
 )
 
 # Automatically inject current time features into the calculation background

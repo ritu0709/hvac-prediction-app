@@ -28,17 +28,16 @@ df_active = load_and_clean_data()
 # ==========================================
 # 3. LIVE MACHINE LEARNING ENGINE TRAIN
 # ==========================================
-@st.cache_resource # Cache the trained model brain so it doesn't retrain on every slider click
+@st.cache_resource 
 def train_svr_engine(data):
-    # Slice features (Dropping targets and data leak variables)
-    X = data.drop(columns=['active_power', 'active_energy'])
+    # 🟢 FIXED: Drop 'on_off' along with active_power and active_energy 
+    # since it's a constant 1.0 and breaks sliders!
+    X = data.drop(columns=['active_power', 'active_energy', 'on_off'], errors='ignore')
     y = data['active_power']
     
-    # Scale feature matrices
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
-    # Fit SVR with optimized hyperparameters
     model = SVR(kernel='rbf', C=100.0, epsilon=0.1)
     model.fit(X_scaled, y.values.ravel())
     
@@ -52,15 +51,19 @@ model, scaler, feature_names = train_svr_engine(df_active)
 st.sidebar.header("🔧 Live Simulation Variables")
 st.sidebar.write("Adjust the environmental factors below to calculate live power demand:")
 
-# Dynamically generate sliders based on actual data limits found in your file
 user_inputs = {}
 for col in feature_names:
     min_val = float(df_active[col].min())
     max_val = float(df_active[col].max())
     mean_val = float(df_active[col].mean())
     
-    # Create an interactive slider widget for each engineering metric
-    user_inputs[col] = st.sidebar.slider(f"{col}", min_val, max_val, mean_val)
+    # 🟢 DEFENSIVE FIX: Only build a slider if the column actually varies!
+    if min_val != max_val:
+        user_inputs[col] = st.sidebar.slider(f"{col}", min_val, max_val, mean_val)
+    else:
+        # If a setting is locked constant (like a seasonal setpoint), show it as text instead of crashing
+        st.sidebar.text(f"🔒 {col} (Fixed): {mean_val}")
+        user_inputs[col] = mean_val
 
 # ==========================================
 # 5. GENERATE LIVE REAL-TIME PREDICTIONS

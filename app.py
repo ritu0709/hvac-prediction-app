@@ -72,7 +72,17 @@ for col in feature_names:
 input_df = pd.DataFrame([user_inputs])[feature_names]
 
 # Standardize the user's manual choices using the trained scaler rules
+# ==========================================
+# 5. GENERATE LIVE REAL-TIME PREDICTIONS
+# ==========================================
+# 🟢 FIXED: Force the input dataframe to ONLY use columns listed in feature_names
+input_df = pd.DataFrame([user_inputs])[list(feature_names)]
+
+# Standardize the user's manual choices using the trained scaler rules
 input_scaled = scaler.transform(input_df)
+
+# Run prediction
+predicted_kw = model.predict(input_scaled)[0]
 
 # Run prediction
 predicted_kw = model.predict(input_scaled)[0]

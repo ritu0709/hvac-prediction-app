@@ -89,22 +89,45 @@ with col2:
 # ==========================================
 # 6. RENDER DYNAMIC AUDIT PARITY CHART
 # ==========================================
+# ==========================================
+# 6. RENDER DYNAMIC AUDIT PARITY CHART & DATA SHEET
+# ==========================================
 st.markdown("---")
-st.markdown("### 📊 Model Validation Metric (Parity View)")
+st.markdown("### 📊 Model Validation Metric & Data Comparison")
 
-fig, ax = plt.subplots(figsize=(10, 4))
+# Create two side-by-side columns: left for the graph, right for the actual numbers spreadsheet
+chart_col, table_col = st.columns([1, 1])
 
-# Clean sample selection to eliminate the feature name mismatch bug
+# Clean sample selection to eliminate name mismatch bug
 sample_data = df_active.sample(n=min(500, len(df_active)), random_state=42)
-X_sample = sample_data[list(feature_names)] # 🟢 FIXED: Force sample to only use matched features
-y_sample = sample_data['active_power']
+X_sample = sample_data[list(feature_names)]
+y_sample = sample_data['active_power'].values.ravel()
 
 sample_scaled = scaler.transform(X_sample)
 sample_preds = model.predict(sample_scaled)
 
-sns.scatterplot(x=y_sample, y=sample_preds, alpha=0.5, color='teal', ax=ax, label="SVR Boundaries")
-ax.plot([y_sample.min(), y_sample.max()], [y_sample.min(), y_sample.max()], 'r--', label="Perfect Target Path")
-ax.set_xlabel("Actual Meter Readings (kW)")
-ax.set_ylabel("Model Predictions (kW)")
-ax.legend()
-st.pyplot(fig)
+with chart_col:
+    st.markdown("#### 📈 Parity Visualization")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.scatterplot(x=y_sample, y=sample_preds, alpha=0.6, color='teal', ax=ax, label="SVR Boundaries")
+    ax.plot([y_sample.min(), y_sample.max()], [y_sample.min(), y_sample.max()], 'r--', linewidth=2, label="Perfect Target Path")
+    ax.set_xlabel("Actual Meter Readings (kW)")
+    ax.set_ylabel("Model Predictions (kW)")
+    ax.legend()
+    st.pyplot(fig)
+
+with table_col:
+    st.markdown("#### 📋 Actual vs. Predicted Audit Log")
+    
+    # Construct a clean summary table matrix
+    results_df = pd.DataFrame({
+        'Actual Power (kW)': y_sample,
+        'Predicted Power (kW)': np.round(sample_preds, 2)
+    }, index=sample_data.index)
+    
+    # Calculate the absolute difference/error for each data row
+    results_df['Error Margin (kW)'] = np.abs(results_df['Actual Power (kW)'] - results_df['Predicted Power (kW)'])
+    results_df['Error Margin (kW)'] = results_df['Error Margin (kW)'].round(2)
+    
+    # Display the interactive, scrollable data grid on the screen
+    st.dataframe(results_df, use_container_width=True, height=320)

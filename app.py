@@ -68,7 +68,7 @@ user_inputs['outside_temp'] = st.sidebar.slider(
 
 # 🟢 FIXED: Set realistic Return water boundaries (Warm)
 user_inputs['inlet_temp'] = st.sidebar.slider(
-    "Inlet Chilled Water Temp (Return) (°C)", 
+    "Chilled Water Temp (Return) (°C)", 
     min_value=12.0, 
     max_value=20.0, 
     value=14.0
@@ -76,7 +76,7 @@ user_inputs['inlet_temp'] = st.sidebar.slider(
 
 # 🟢 FIXED: Set realistic Supply water boundaries (Cold)
 user_inputs['outlet_temp'] = st.sidebar.slider(
-    "Outlet Chilled Water Temp (Supply) (°C)", 
+    "Chilled Water Temp (Supply) (°C)", 
     min_value=6.0, 
     max_value=12.0, 
     value=7.0

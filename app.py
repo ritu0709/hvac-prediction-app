@@ -158,10 +158,12 @@ with input_col1:
 
 with input_col2:
     f_outside = st.number_input("Forecasted Outside Temp (°C):", min_value=10.0, max_value=50.0, value=35.0, step=0.5)
-    f_inlet = st.number_input("Expected Inlet Chilled Water Temp (°C):", min_value=10.0, max_value=35.0, value=24.0, step=0.5)
+    # 🟢 FIXED BOUNDS
+    f_inlet = st.number_input("Expected Inlet Chilled Water Temp (°C):", min_value=12.0, max_value=20.0, value=14.0, step=0.5)
 
 with input_col3:
-    f_outlet = st.number_input("Expected Outlet Chilled Water Temp (°C):", min_value=5.0, max_value=25.0, value=17.0, step=0.5)
+    # 🟢 FIXED BOUNDS
+    f_outlet = st.number_input("Expected Outlet Chilled Water Temp (°C):", min_value=6.0, max_value=12.0, value=7.0, step=0.5)
 
 if st.button("🚀 Calculate Future Date Power Demand"):
     combined_dt = datetime.datetime.combine(future_date, future_time)

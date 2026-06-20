@@ -14,9 +14,8 @@ st.write("This application trains a champion Support Vector Regression (SVR) mod
 # ==========================================
 # 2. DATA INGESTION & PIPELINE CLEANING
 # ==========================================
-@st.cache_data # Cache data so it stays lightning-fast on reload
+@st.cache_data
 def load_and_clean_data():
-    # Load the compressed parquet structure
     data = pd.read_parquet("hvac_data_cleaned.parquet")
     
     # Isolate active operating states only (on_off == 1.0)
@@ -30,14 +29,15 @@ df_active = load_and_clean_data()
 # ==========================================
 @st.cache_resource 
 def train_svr_engine(data):
-    # 🟢 FIXED: Drop 'on_off' along with active_power and active_energy 
-    # since it's a constant 1.0 and breaks sliders!
+    # Drop targets, data leak variables, and the constant on_off flag
     X = data.drop(columns=['active_power', 'active_energy', 'on_off'], errors='ignore')
     y = data['active_power']
     
+    # Scale feature matrices
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
+    # Fit SVR with optimized hyperparameters
     model = SVR(kernel='rbf', C=100.0, epsilon=0.1)
     model.fit(X_scaled, y.values.ravel())
     
@@ -57,32 +57,21 @@ for col in feature_names:
     max_val = float(df_active[col].max())
     mean_val = float(df_active[col].mean())
     
-    # 🟢 DEFENSIVE FIX: Only build a slider if the column actually varies!
+    # Only build a slider if the column actually varies
     if min_val != max_val:
         user_inputs[col] = st.sidebar.slider(f"{col}", min_val, max_val, mean_val)
     else:
-        # If a setting is locked constant (like a seasonal setpoint), show it as text instead of crashing
         st.sidebar.text(f"🔒 {col} (Fixed): {mean_val}")
         user_inputs[col] = mean_val
 
 # ==========================================
 # 5. GENERATE LIVE REAL-TIME PREDICTIONS
 # ==========================================
-# Convert user inputs into a single row matrix dataframe matching original order
-input_df = pd.DataFrame([user_inputs])[feature_names]
-
-# Standardize the user's manual choices using the trained scaler rules
-# ==========================================
-# 5. GENERATE LIVE REAL-TIME PREDICTIONS
-# ==========================================
-# 🟢 FIXED: Force the input dataframe to ONLY use columns listed in feature_names
+# Force the input dataframe to strictly contain only the features passed during fit
 input_df = pd.DataFrame([user_inputs])[list(feature_names)]
 
 # Standardize the user's manual choices using the trained scaler rules
 input_scaled = scaler.transform(input_df)
-
-# Run prediction
-predicted_kw = model.predict(input_scaled)[0]
 
 # Run prediction
 predicted_kw = model.predict(input_scaled)[0]
@@ -103,21 +92,11 @@ with col2:
 st.markdown("---")
 st.markdown("### 📊 Model Validation Metric (Parity View)")
 
-@st.cache_data
-def load_and_clean_data():
-    data = pd.read_parquet("hvac_data_cleaned.parquet")
-    data_active = data[data['on_off'] == 1.0]
-    
-    # 🟢 ADD THIS LINE: Sample 3,000 rows randomly to make cloud training instant
-    if len(data_active) > 3000:
-        data_active = data_active.sample(n=3000, random_state=42)
-        
-    return data_active
-
 fig, ax = plt.subplots(figsize=(10, 4))
-# Plot a representative sample of active points to keep the layout lightweight
-sample_data = df_active.sample(n=500, random_state=42)
-X_sample = sample_data.drop(columns=['active_power', 'active_energy'])
+
+# Clean sample selection to eliminate the feature name mismatch bug
+sample_data = df_active.sample(n=min(500, len(df_active)), random_state=42)
+X_sample = sample_data[list(feature_names)] # 🟢 FIXED: Force sample to only use matched features
 y_sample = sample_data['active_power']
 
 sample_scaled = scaler.transform(X_sample)

@@ -90,6 +90,17 @@ with col2:
 st.markdown("---")
 st.markdown("### 📊 Model Validation Metric (Parity View)")
 
+@st.cache_data
+def load_and_clean_data():
+    data = pd.read_parquet("hvac_data_cleaned.parquet")
+    data_active = data[data['on_off'] == 1.0]
+    
+    # 🟢 ADD THIS LINE: Sample 3,000 rows randomly to make cloud training instant
+    if len(data_active) > 3000:
+        data_active = data_active.sample(n=3000, random_state=42)
+        
+    return data_active
+
 fig, ax = plt.subplots(figsize=(10, 4))
 # Plot a representative sample of active points to keep the layout lightweight
 sample_data = df_active.sample(n=500, random_state=42)

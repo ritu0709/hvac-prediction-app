@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVR
 import matplotlib.pyplot as plt
 import seaborn as sns
+import datetime
 
 # 1. Page Configuration Setup
 st.set_page_config(page_title="SonRite HVAC Energy Auditor", layout="wide")
@@ -87,9 +88,6 @@ with col2:
     st.write(f"Dataset Range: **{df_active['active_power'].min():.2f} kW** to **{df_active['active_power'].max():.2f} kW**")
 
 # ==========================================
-# 6. RENDER DYNAMIC AUDIT PARITY CHART
-# ==========================================
-# ==========================================
 # 6. RENDER DYNAMIC AUDIT PARITY CHART & DATA SHEET
 # ==========================================
 st.markdown("---")
@@ -131,3 +129,50 @@ with table_col:
     
     # Display the interactive, scrollable data grid on the screen
     st.dataframe(results_df, use_container_width=True, height=320)
+
+# ==========================================
+# 7. AUTOMATED FUTURE HORIZON CALENDAR PREDICTOR
+# ==========================================
+st.markdown("---")
+st.markdown("### 📅 Automated Future Horizon Predictor")
+
+# 1. Create a calendar input widget on the screen
+future_date = st.date_input(
+    "Select a future date to forecast:",
+    min_value=datetime.date.today(),
+    value=datetime.date.today() + datetime.timedelta(days=1) # Defaults to tomorrow
+)
+
+# 2. Extract Time-Engineering Parameters from the chosen date
+future_day_of_week = future_date.weekday() # 0 = Monday, 6 = Sunday
+future_month = future_date.month
+
+st.write(f"Analyzing historical baselines for Month: **{future_month}** | Day of Week: **{future_day_of_week}**")
+
+# 3. Fetch Historical Baseline Averages for that specific time bracket
+matching_historical_data = df_active[
+    (df_active.index.month == future_month) & 
+    (df_active.index.dayofweek == future_day_of_week)
+]
+
+if not matching_historical_data.empty:
+    # Calculate the average environmental conditions during that historical period
+    baseline_features = matching_historical_data[list(feature_names)].mean()
+    
+    # Convert baseline features into a 2D dataframe for the model
+    future_input_df = pd.DataFrame([baseline_features])[list(feature_names)]
+    future_scaled = scaler.transform(future_input_df)
+    
+    # Run prediction using the SVR brain
+    future_pred_kw = model.predict(future_scaled)[0]
+    
+    st.success(f"🔮 **Estimated Power Demand for {future_date}:** {future_pred_kw:.2f} kW")
+    st.info(f"💡 *This prediction is built by combining historical trends for month {future_month} with your trained SVR thermodynamic model.*")
+else:
+    # Fallback if the dataset doesn't have records for that specific seasonal month yet
+    overall_mean = df_active[list(feature_names)].mean()
+    future_input_df = pd.DataFrame([overall_mean])[list(feature_names)]
+    future_scaled = scaler.transform(future_input_df)
+    future_pred_kw = model.predict(future_scaled)[0]
+    
+    st.warning(f"🔮 **Estimated Power Demand (Using Overall Asset Average):** {future_pred_kw:.2f} kW")

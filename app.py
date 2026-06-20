@@ -18,7 +18,6 @@ st.write("This application trains a champion Support Vector Regression (SVR) mod
 @st.cache_data
 def load_and_clean_data():
     data = pd.read_parquet("hvac_data_cleaned.parquet")
-    
     # Isolate active operating states only (on_off == 1.0)
     data_active = data[data['on_off'] == 1.0]
     return data_active
@@ -30,15 +29,20 @@ df_active = load_and_clean_data()
 # ==========================================
 @st.cache_resource 
 def train_svr_engine(data):
-    # Drop targets, data leak variables, and the constant on_off flag
-    X = data.drop(columns=['active_power', 'active_energy', 'on_off'], errors='ignore')
+    # Standardize data to extract the precise features you selected
+    # We explicitly build the training matrix using ONLY these 5 columns
+    X = pd.DataFrame(index=data.index)
+    X['outside_temp'] = data['outside_temp']
+    X['inlet_temp'] = data['inlet_temp']
+    X['outlet_temp'] = data['outlet_temp']
+    X['hour'] = data.index.hour
+    X['day_of_week'] = data.index.dayofweek
+    
     y = data['active_power']
     
-    # Scale feature matrices
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
-    # Fit SVR with optimized hyperparameters
     model = SVR(kernel='rbf', C=100.0, epsilon=0.1)
     model.fit(X_scaled, y.values.ravel())
     
@@ -47,27 +51,30 @@ def train_svr_engine(data):
 model, scaler, feature_names = train_svr_engine(df_active)
 
 # ==========================================
-# 4. SIDEBAR USER SIMULATION SLIDERS (CURRENT SCENARIO)
+# 4. SIDEBAR USER SIMULATION SLIDERS (CLEANED)
 # ==========================================
 st.sidebar.header("🔧 Live Simulation Variables")
-st.sidebar.write("Adjust the environmental factors below to calculate live power demand:")
+st.sidebar.write("Adjust the primary thermal factors to calculate live power demand:")
 
+# Explicitly create only your 3 essential sliders with native range constraints
 user_inputs = {}
-for col in feature_names:
-    # Skip hour and day of week for sliders since we want to handle them cleanly
-    if col in ['hour', 'day_of_week']:
-        continue
-    min_val = float(df_active[col].min())
-    max_val = float(df_active[col].max())
-    mean_val = float(df_active[col].mean())
-    
-    if min_val != max_val:
-        user_inputs[col] = st.sidebar.slider(f"{col}", min_val, max_val, mean_val)
-    else:
-        st.sidebar.text(f"🔒 {col} (Fixed): {mean_val}")
-        user_inputs[col] = mean_val
 
-# Add current hour and day of week defaults for the sidebar calculation
+user_inputs['outside_temp'] = st.sidebar.slider(
+    "Outside Temperature (°C)", 
+    float(df_active['outside_temp'].min()), float(df_active['outside_temp'].max()), float(df_active['outside_temp'].mean())
+)
+
+user_inputs['inlet_temp'] = st.sidebar.slider(
+    "Inlet Chilled Water Temp (°C)", 
+    float(df_active['inlet_temp'].min()), float(df_active['inlet_temp'].max()), float(df_active['inlet_temp'].mean())
+)
+
+user_inputs['outlet_temp'] = st.sidebar.slider(
+    "Outlet Chilled Water Temp (°C)", 
+    float(df_active['outlet_temp'].min()), float(df_active['outlet_temp'].max()), float(df_active['outlet_temp'].mean())
+)
+
+# Automatically inject current time features into the calculation background
 user_inputs['hour'] = float(datetime.datetime.now().hour)
 user_inputs['day_of_week'] = float(datetime.datetime.now().weekday())
 
@@ -96,13 +103,15 @@ st.markdown("### 📊 Model Validation Metric & Data Comparison")
 chart_col, table_col = st.columns([1, 1])
 
 sample_data = df_active.sample(n=min(500, len(df_active)), random_state=42)
-# Ensure sample data includes extracted hour and day of week columns for scaling
-sample_data_features = sample_data.copy()
+sample_data_features = pd.DataFrame(index=sample_data.index)
+sample_data_features['outside_temp'] = sample_data['outside_temp']
+sample_data_features['inlet_temp'] = sample_data['inlet_temp']
+sample_data_features['outlet_temp'] = sample_data['outlet_temp']
 sample_data_features['hour'] = sample_data_features.index.hour
 sample_data_features['day_of_week'] = sample_data_features.index.dayofweek
 
 X_sample = sample_data_features[list(feature_names)]
-y_sample = sample_data_features['active_power'].values.ravel()
+y_sample = sample_data['active_power'].values.ravel()
 
 sample_scaled = scaler.transform(X_sample)
 sample_preds = model.predict(sample_scaled)
@@ -133,12 +142,11 @@ st.markdown("---")
 st.markdown("### 🔮 Manipulate Future Target Date Prediction")
 st.write("Manually enter a custom future date and expected thermodynamic inputs to run a targeted prediction:")
 
-# Create UI Layout Columns for User Input Gaps
 input_col1, input_col2, input_col3 = st.columns(3)
 
 with input_col1:
     future_date = st.date_input("Choose Future Date:", datetime.date.today() + datetime.timedelta(days=1))
-    future_time = st.time_input("Choose Future Shift Time:", datetime.time(14, 0)) # Defaults to 2:00 PM
+    future_time = st.time_input("Choose Future Shift Time:", datetime.time(14, 0))
 
 with input_col2:
     f_outside = st.number_input("Forecasted Outside Temp (°C):", min_value=10.0, max_value=50.0, value=35.0, step=0.5)
@@ -147,16 +155,11 @@ with input_col2:
 with input_col3:
     f_outlet = st.number_input("Expected Outlet Chilled Water Temp (°C):", min_value=5.0, max_value=25.0, value=17.0, step=0.5)
 
-# Execute the extraction logic on user submission click
 if st.button("🚀 Calculate Future Date Power Demand"):
-    # Combine user's date input and time input into a single datetime structure
     combined_dt = datetime.datetime.combine(future_date, future_time)
-    
-    # Extract structural hour and day codes
     f_hour = combined_dt.hour
     f_day_of_week = combined_dt.weekday()
     
-    # Construct input vector matching your exact feature list
     future_scenario_df = pd.DataFrame([{
         'outside_temp': float(f_outside),
         'inlet_temp': float(f_inlet),
@@ -165,12 +168,8 @@ if st.button("🚀 Calculate Future Date Power Demand"):
         'day_of_week': float(f_day_of_week)
     }])[list(feature_names)]
     
-    # Run through scaled pipeline
     future_scenario_scaled = scaler.transform(future_scenario_df)
     future_prediction_kw = model.predict(future_scenario_scaled)[0]
     
-    # Render Output Report Card on Web UI
     st.success(f"🎯 **SVR Forecast Result:** The predicted power demand for **{combined_dt.strftime('%B %d, %Y at %I:%M %p')}** is **{future_prediction_kw:.2f} kW**")
-    
-    # Display the breakdown summary details
     st.info(f"💡 *Analysis Parameters Used — Outside: {f_outside}°C | Loop ΔT: {f_inlet - f_outlet:.1f}°C | Hour Key: {f_hour} | Day Code: {f_day_of_week}*")

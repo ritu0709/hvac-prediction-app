@@ -47,42 +47,42 @@ def train_svr_engine(data):
 model, scaler, feature_names = train_svr_engine(df_active)
 
 # ==========================================
-# 4. SIDEBAR USER SIMULATION SLIDERS
+# 4. SIDEBAR USER SIMULATION SLIDERS (CURRENT SCENARIO)
 # ==========================================
 st.sidebar.header("🔧 Live Simulation Variables")
 st.sidebar.write("Adjust the environmental factors below to calculate live power demand:")
 
 user_inputs = {}
 for col in feature_names:
+    # Skip hour and day of week for sliders since we want to handle them cleanly
+    if col in ['hour', 'day_of_week']:
+        continue
     min_val = float(df_active[col].min())
     max_val = float(df_active[col].max())
     mean_val = float(df_active[col].mean())
     
-    # Only build a slider if the column actually varies
     if min_val != max_val:
         user_inputs[col] = st.sidebar.slider(f"{col}", min_val, max_val, mean_val)
     else:
         st.sidebar.text(f"🔒 {col} (Fixed): {mean_val}")
         user_inputs[col] = mean_val
 
+# Add current hour and day of week defaults for the sidebar calculation
+user_inputs['hour'] = float(datetime.datetime.now().hour)
+user_inputs['day_of_week'] = float(datetime.datetime.now().weekday())
+
 # ==========================================
 # 5. GENERATE LIVE REAL-TIME PREDICTIONS
 # ==========================================
-# Force the input dataframe to strictly contain only the features passed during fit
 input_df = pd.DataFrame([user_inputs])[list(feature_names)]
-
-# Standardize the user's manual choices using the trained scaler rules
 input_scaled = scaler.transform(input_df)
-
-# Run prediction
 predicted_kw = model.predict(input_scaled)[0]
 
 # Display results inside prominent UI metric blocks
 col1, col2 = st.columns(2)
 with col1:
-    st.markdown("### 🎯 Predicted Power Demand")
+    st.markdown("### 🎯 Predicted Power Demand (Sidebar Sliders)")
     st.metric(label="Calculated SVR Target Output", value=f"{predicted_kw:.2f} kW")
-
 with col2:
     st.markdown("### 📈 Historical Context")
     st.write(f"Dataset Range: **{df_active['active_power'].min():.2f} kW** to **{df_active['active_power'].max():.2f} kW**")
@@ -93,13 +93,16 @@ with col2:
 st.markdown("---")
 st.markdown("### 📊 Model Validation Metric & Data Comparison")
 
-# Create two side-by-side columns: left for the graph, right for the actual numbers spreadsheet
 chart_col, table_col = st.columns([1, 1])
 
-# Clean sample selection to eliminate name mismatch bug
 sample_data = df_active.sample(n=min(500, len(df_active)), random_state=42)
-X_sample = sample_data[list(feature_names)]
-y_sample = sample_data['active_power'].values.ravel()
+# Ensure sample data includes extracted hour and day of week columns for scaling
+sample_data_features = sample_data.copy()
+sample_data_features['hour'] = sample_data_features.index.hour
+sample_data_features['day_of_week'] = sample_data_features.index.dayofweek
+
+X_sample = sample_data_features[list(feature_names)]
+y_sample = sample_data_features['active_power'].values.ravel()
 
 sample_scaled = scaler.transform(X_sample)
 sample_preds = model.predict(sample_scaled)
@@ -116,63 +119,58 @@ with chart_col:
 
 with table_col:
     st.markdown("#### 📋 Actual vs. Predicted Audit Log")
-    
-    # Construct a clean summary table matrix
     results_df = pd.DataFrame({
         'Actual Power (kW)': y_sample,
         'Predicted Power (kW)': np.round(sample_preds, 2)
     }, index=sample_data.index)
-    
-    # Calculate the absolute difference/error for each data row
-    results_df['Error Margin (kW)'] = np.abs(results_df['Actual Power (kW)'] - results_df['Predicted Power (kW)'])
-    results_df['Error Margin (kW)'] = results_df['Error Margin (kW)'].round(2)
-    
-    # Display the interactive, scrollable data grid on the screen
+    results_df['Error Margin (kW)'] = np.abs(results_df['Actual Power (kW)'] - results_df['Predicted Power (kW)']).round(2)
     st.dataframe(results_df, use_container_width=True, height=320)
 
 # ==========================================
-# 7. AUTOMATED FUTURE HORIZON CALENDAR PREDICTOR
+# 7. MANIPULATE A SPECIFIC FUTURE DATE TARGET
 # ==========================================
 st.markdown("---")
-st.markdown("### 📅 Automated Future Horizon Predictor")
+st.markdown("### 🔮 Manipulate Future Target Date Prediction")
+st.write("Manually enter a custom future date and expected thermodynamic inputs to run a targeted prediction:")
 
-# 1. Create a calendar input widget on the screen
-future_date = st.date_input(
-    "Select a future date to forecast:",
-    min_value=datetime.date.today(),
-    value=datetime.date.today() + datetime.timedelta(days=1) # Defaults to tomorrow
-)
+# Create UI Layout Columns for User Input Gaps
+input_col1, input_col2, input_col3 = st.columns(3)
 
-# 2. Extract Time-Engineering Parameters from the chosen date
-future_day_of_week = future_date.weekday() # 0 = Monday, 6 = Sunday
-future_month = future_date.month
+with input_col1:
+    future_date = st.date_input("Choose Future Date:", datetime.date.today() + datetime.timedelta(days=1))
+    future_time = st.time_input("Choose Future Shift Time:", datetime.time(14, 0)) # Defaults to 2:00 PM
 
-st.write(f"Analyzing historical baselines for Month: **{future_month}** | Day of Week: **{future_day_of_week}**")
+with input_col2:
+    f_outside = st.number_input("Forecasted Outside Temp (°C):", min_value=10.0, max_value=50.0, value=35.0, step=0.5)
+    f_inlet = st.number_input("Expected Inlet Chilled Water Temp (°C):", min_value=10.0, max_value=35.0, value=24.0, step=0.5)
 
-# 3. Fetch Historical Baseline Averages for that specific time bracket
-matching_historical_data = df_active[
-    (df_active.index.month == future_month) & 
-    (df_active.index.dayofweek == future_day_of_week)
-]
+with input_col3:
+    f_outlet = st.number_input("Expected Outlet Chilled Water Temp (°C):", min_value=5.0, max_value=25.0, value=17.0, step=0.5)
 
-if not matching_historical_data.empty:
-    # Calculate the average environmental conditions during that historical period
-    baseline_features = matching_historical_data[list(feature_names)].mean()
+# Execute the extraction logic on user submission click
+if st.button("🚀 Calculate Future Date Power Demand"):
+    # Combine user's date input and time input into a single datetime structure
+    combined_dt = datetime.datetime.combine(future_date, future_time)
     
-    # Convert baseline features into a 2D dataframe for the model
-    future_input_df = pd.DataFrame([baseline_features])[list(feature_names)]
-    future_scaled = scaler.transform(future_input_df)
+    # Extract structural hour and day codes
+    f_hour = combined_dt.hour
+    f_day_of_week = combined_dt.weekday()
     
-    # Run prediction using the SVR brain
-    future_pred_kw = model.predict(future_scaled)[0]
+    # Construct input vector matching your exact feature list
+    future_scenario_df = pd.DataFrame([{
+        'outside_temp': float(f_outside),
+        'inlet_temp': float(f_inlet),
+        'outlet_temp': float(f_outlet),
+        'hour': float(f_hour),
+        'day_of_week': float(f_day_of_week)
+    }])[list(feature_names)]
     
-    st.success(f"🔮 **Estimated Power Demand for {future_date}:** {future_pred_kw:.2f} kW")
-    st.info(f"💡 *This prediction is built by combining historical trends for month {future_month} with your trained SVR thermodynamic model.*")
-else:
-    # Fallback if the dataset doesn't have records for that specific seasonal month yet
-    overall_mean = df_active[list(feature_names)].mean()
-    future_input_df = pd.DataFrame([overall_mean])[list(feature_names)]
-    future_scaled = scaler.transform(future_input_df)
-    future_pred_kw = model.predict(future_scaled)[0]
+    # Run through scaled pipeline
+    future_scenario_scaled = scaler.transform(future_scenario_df)
+    future_prediction_kw = model.predict(future_scenario_scaled)[0]
     
-    st.warning(f"🔮 **Estimated Power Demand (Using Overall Asset Average):** {future_pred_kw:.2f} kW")
+    # Render Output Report Card on Web UI
+    st.success(f"🎯 **SVR Forecast Result:** The predicted power demand for **{combined_dt.strftime('%B %d, %Y at %I:%M %p')}** is **{future_prediction_kw:.2f} kW**")
+    
+    # Display the breakdown summary details
+    st.info(f"💡 *Analysis Parameters Used — Outside: {f_outside}°C | Loop ΔT: {f_inlet - f_outlet:.1f}°C | Hour Key: {f_hour} | Day Code: {f_day_of_week}*")
